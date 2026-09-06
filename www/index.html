@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<title>VegaChat — Твой ИИ-собеседник</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#2F6BFF">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<script src="capacitor.js"></script>
+<style>
+  :root{
+    --bg-light:#F6F7FC;
+    --bg-dark:#0E1023;
+    --card-dark:#161933;
+    --ink:#12131A;
+    --ink-soft:#63667A;
+    --ink-dark:#F2F3FA;
+    --ink-soft-dark:#9497B3;
+    --blue:#2F6BFF;
+    --indigo:#5B4CFC;
+    --pink:#FF6FA0;
+    --cyan:#33D6C7;
+    --dot-inactive:rgba(18,19,26,0.14);
+    --dot-inactive-dark:rgba(242,243,250,0.18);
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  *{
+    box-sizing:border-box;
+    -webkit-tap-highlight-color:rgba(0,0,0,0) !important;
+    tap-highlight-color:rgba(0,0,0,0) !important;
+    -webkit-touch-callout:none;
+    -webkit-user-select:none;
+    -moz-user-select:none;
+    -ms-user-select:none;
+    user-select:none;
+    outline:none;
+  }
+  ::selection{ background:transparent; color:inherit; }
+  ::-moz-selection{ background:transparent; color:inherit; }
+
+  html,body{
+    margin:0; padding:0; height:100%; overflow:hidden;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    background:var(--bg-light);
+    color:var(--ink);
+    transition:background .45s ease, color .45s ease;
+  }
+  html.dark, html.dark body{ background:var(--bg-dark); color:var(--ink-dark); }
+
+  .app{
+    position:relative;
+    height:100%;
+    width:100%;
+    max-width:520px;
+    margin:0 auto;
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+  }
+
+  /* ---------- Fine grain texture overlay, adds tactile depth ---------- */
+  .grain{
+    position:fixed; inset:0;
+    z-index:40;
+    pointer-events:none;
+    opacity:.035;
+    mix-blend-mode:overlay;
+  }
+  html.dark .grain{ opacity:.06; mix-blend-mode:soft-light; }
+
+  /* ---------- Ambient AI glow behind the icon, recolors per slide ---------- */
+  .blob{
+    position:absolute;
+    top:calc(-14% + var(--safe-top));
+    left:50%;
+    width:100vw;
+    max-width:560px;
+    height:100vw;
+    max-height:560px;
+    transform:translateX(-50%);
+    border-radius:50%;
+    filter:blur(55px);
+    opacity:.5;
+    pointer-events:none;
+    transition:background 1s ease, opacity .4s ease;
+    z-index:0;
+  }
+  html.dark .blob{ opacity:.32; }
+
+  /* ---------- Drifting ambient particles ---------- */
+  .particles{
+    position:absolute; inset:0;
+    z-index:0;
+    pointer-events:none;
+    overflow:hidden;
+  }
+  .particle{
+    position:absolute;
+    border-radius:50%;
+    background:var(--blue);
+    opacity:0;
+    animation:drift linear infinite;
+  }
+  html.dark .particle{ opacity:0; }
+  @keyframes drift{
+    0%{ transform:translateY(10px) scale(.6); opacity:0; }
+    12%{ opacity:.45; }
+    85%{ opacity:.25; }
+    100%{ transform:translateY(-140px) scale(1); opacity:0; }
+  }
+  html.dark .particle{ mix-blend-mode:screen; }
+
+  /* ---------- Top bar ---------- */
+  .topbar{
+    position:relative; z-index:2;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:calc(18px + var(--safe-top)) 20px 8px;
+  }
+  .pill-btn{
+    position:relative;
+    display:flex; align-items:center; gap:6px;
+    background:rgba(120,130,180,0.12);
+    border:1px solid rgba(120,130,180,0.18);
+    color:var(--ink);
+    padding:8px 14px;
+    border-radius:999px;
+    font-size:13px;
+    font-weight:600;
+    letter-spacing:.2px;
+    cursor:pointer;
+    overflow:hidden;
+    transition:background .2s ease, color .3s ease, border-color .3s ease, transform .15s ease;
+  }
+  html.dark .pill-btn{ color:var(--ink-dark); background:rgba(255,255,255,0.06); border-color:rgba(255,255,255,0.1); }
+  .pill-btn:active{ transform:scale(.96); }
+  .pill-btn svg{ width:15px; height:15px; flex:none; }
+
+  .icon-btn{
+    position:relative;
+    width:38px; height:38px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    background:rgba(120,130,180,0.12);
+    border:1px solid rgba(120,130,180,0.18);
+    cursor:pointer;
+    overflow:hidden;
+    transition:background .2s ease, border-color .3s ease, transform .15s ease;
+  }
+  html.dark .icon-btn{ background:rgba(255,255,255,0.06); border-color:rgba(255,255,255,0.1); }
+  .icon-btn:active{ transform:scale(.92); }
+  .icon-btn svg{ width:18px; height:18px; stroke:var(--ink); transition:stroke .3s ease;}
+  html.dark .icon-btn svg{ stroke:var(--ink-dark); }
+
+  /* ---------- Tiny tap ripple, used on every pressable control ---------- */
+  .ripple{
+    position:absolute;
+    border-radius:50%;
+    background:rgba(255,255,255,.55);
+    transform:scale(0);
+    opacity:.6;
+    pointer-events:none;
+    animation:ripple-out .55s ease-out forwards;
+  }
+  html.dark .ripple{ background:rgba(255,255,255,.28); }
+  @keyframes ripple-out{
+    to{ transform:scale(2.6); opacity:0; }
+  }
+
+  .skip{
+    position:relative; z-index:2;
+    text-align:right;
+    padding:0 20px;
+    font-size:13px;
+    font-weight:600;
+    color:var(--ink-soft);
+    cursor:pointer;
+    min-height:20px;
+  }
+  html.dark .skip{ color:var(--ink-soft-dark); }
+  .skip.hide{ visibility:hidden; }
+
+  /* ---------- Slide viewport ---------- */
+  .viewport{
+    position:relative; z-index:1;
+    flex:1;
+    overflow:hidden;
+  }
+  .track{
+    display:flex;
+    height:100%;
+    width:500%;
+    transition:transform .5s cubic-bezier(.65,.05,.2,1);
+    will-change:transform;
+  }
+  .slide{
+    width:20%;
+    height:100%;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    padding:0 34px;
+    text-align:center;
+  }
+
+  .icon-wrap{
+    position:relative;
+    width:132px; height:132px;
+    border-radius:38px;
+    display:flex; align-items:center; justify-content:center;
+    margin-bottom:34px;
+    box-shadow:0 18px 40px -14px var(--shadow-color, rgba(47,107,255,.55)), inset 0 1px 0 rgba(255,255,255,.35), inset 0 -12px 20px -8px rgba(0,0,0,.18);
+    transform:scale(.4);
+    opacity:0;
+    isolation:isolate;
+  }
+  .icon-wrap::before{
+    content:"";
+    position:absolute; inset:0;
+    border-radius:inherit;
+    background:linear-gradient(135deg, rgba(255,255,255,.5), rgba(255,255,255,0) 55%);
+    opacity:.8;
+  }
+  .icon-wrap::after{
+    content:"";
+    position:absolute;
+    top:-2px; left:-2px; right:-2px; bottom:-2px;
+    border-radius:inherit;
+    padding:1px;
+    background:conic-gradient(from 0deg, rgba(255,255,255,.55), rgba(255,255,255,0) 30%, rgba(255,255,255,0) 70%, rgba(255,255,255,.55));
+    -webkit-mask:linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite:xor;
+    mask-composite:exclude;
+    animation:ring-spin 6s linear infinite;
+    z-index:-1;
+  }
+  @keyframes ring-spin{ to{ transform:rotate(360deg); } }
+  .icon-wrap svg{ width:58px; height:58px; position:relative; z-index:1; filter:drop-shadow(0 2px 3px rgba(0,0,0,.15)); }
+
+  .slide.is-active .icon-wrap{
+    animation:pop-in .6s cubic-bezier(.2,1.4,.4,1) forwards .05s;
+  }
+  @keyframes pop-in{
+    0%{ transform:scale(.4); opacity:0; }
+    60%{ transform:scale(1.08); opacity:1; }
+    100%{ transform:scale(1); opacity:1; }
+  }
+
+  .slide h1{
+    font-size:27px;
+    font-weight:800;
+    line-height:1.28;
+    margin:0 0 14px;
+    letter-spacing:-.01em;
+    opacity:0;
+    transform:translateY(10px);
+  }
+  .slide p.sub{
+    font-size:15.5px;
+    line-height:1.55;
+    font-weight:500;
+    color:var(--ink-soft);
+    margin:0;
+    max-width:340px;
+    opacity:0;
+    transform:translateY(10px);
+  }
+  html.dark .slide p.sub{ color:var(--ink-soft-dark); }
+
+  .slide.is-active h1{ animation:rise-in .55s ease forwards .16s; }
+  .slide.is-active p.sub{ animation:rise-in .55s ease forwards .26s; }
+  @keyframes rise-in{
+    to{ opacity:1; transform:translateY(0); }
+  }
+
+  .contest-card{
+    position:relative;
+    margin-top:26px;
+    width:100%;
+    max-width:340px;
+    padding:16px 18px;
+    border-radius:20px;
+    background:linear-gradient(135deg, rgba(47,107,255,.12), rgba(255,111,160,.12));
+    border:1px solid rgba(47,107,255,.22);
+    opacity:0;
+    transform:translateY(10px);
+    overflow:hidden;
+  }
+  .contest-card::before{
+    content:"";
+    position:absolute;
+    top:-40%; left:-20%;
+    width:60%; height:220%;
+    background:linear-gradient(120deg, rgba(255,255,255,0), rgba(255,255,255,.35), rgba(255,255,255,0));
+    transform:rotate(18deg);
+    animation:sheen 3.4s ease-in-out infinite;
+    animation-delay:1.2s;
+  }
+  html.dark .contest-card::before{ background:linear-gradient(120deg, rgba(255,255,255,0), rgba(255,255,255,.12), rgba(255,255,255,0)); }
+  @keyframes sheen{
+    0%, 60%{ transform:translateX(-40%) rotate(18deg); }
+    100%{ transform:translateX(320%) rotate(18deg); }
+  }
+  .slide.is-active .contest-card{ animation:rise-in .55s ease forwards .36s; }
+  html.dark .contest-card{ background:linear-gradient(135deg, rgba(91,76,252,.18), rgba(255,111,160,.14)); border-color:rgba(91,76,252,.3); }
+
+  .contest-link{
+    position:relative;
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    width:100%;
+    padding:13px 16px;
+    border-radius:14px;
+    background:var(--blue);
+    color:#fff;
+    font-weight:700;
+    font-size:14.5px;
+    text-decoration:none;
+    box-shadow:0 10px 22px -10px rgba(47,107,255,.7);
+    overflow:hidden;
+  }
+  .contest-link svg{ width:16px; height:16px; }
+  .contest-link:active{ transform:scale(.98); }
+  .contest-note{
+    position:relative;
+    margin:10px 0 0;
+    font-size:12.5px;
+    color:var(--ink-soft);
+    font-weight:500;
+  }
+  html.dark .contest-note{ color:var(--ink-soft-dark); }
+
+  /* ---------- Dots ---------- */
+  .dots{
+    position:relative; z-index:2;
+    display:flex; align-items:center; justify-content:center;
+    gap:7px;
+    padding:6px 0 18px;
+  }
+  .dot{
+    height:7px; width:7px;
+    border-radius:4px;
+    background:var(--dot-inactive);
+    transition:width .35s ease, background .35s ease, box-shadow .35s ease;
+    cursor:default;
+  }
+  html.dark .dot{ background:var(--dot-inactive-dark); }
+  .dot.active{ width:22px; background:var(--blue); box-shadow:0 0 10px -1px rgba(47,107,255,.7); }
+
+  /* ---------- Bottom action ---------- */
+  .bottom{
+    position:relative; z-index:2;
+    padding:0 20px calc(22px + var(--safe-bottom));
+  }
+  .cta{
+    position:relative;
+    width:100%;
+    border:none;
+    padding:16px 20px;
+    border-radius:16px;
+    font-size:16px;
+    font-weight:700;
+    color:#fff;
+    background:linear-gradient(90deg,var(--blue),var(--indigo));
+    background-size:180% 100%;
+    background-position:0% 0%;
+    cursor:pointer;
+    box-shadow:0 14px 30px -12px rgba(47,107,255,.55);
+    transition:transform .15s ease, box-shadow .3s ease, background-position .5s ease;
+    overflow:hidden;
+  }
+  .cta:active{ transform:scale(.98); }
+  .cta.pulse{ animation:cta-pulse .45s ease; }
+  @keyframes cta-pulse{
+    0%{ background-position:0% 0%; }
+    50%{ background-position:100% 0%; }
+    100%{ background-position:0% 0%; }
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    .track{ transition:none; }
+    .icon-wrap, .slide h1, .slide p.sub, .contest-card, .icon-wrap::after, .particle, .contest-card::before{ animation:none !important; opacity:1 !important; transform:none !important; }
+  }
+
+  /* ---------- Splash / logo intro ---------- */
+  .splash{
+    position:fixed; inset:0;
+    z-index:50;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    background:var(--bg-light);
+    transition:opacity .55s ease, visibility .55s ease;
+    overflow:hidden;
+  }
+  html.dark .splash{ background:var(--bg-dark); }
+  .splash.hide{ opacity:0; visibility:hidden; pointer-events:none; }
+
+  .splash-rings{
+    position:absolute;
+    width:280px; height:280px;
+    border-radius:50%;
+    pointer-events:none;
+  }
+  .splash-rings span{
+    position:absolute; inset:0;
+    border-radius:50%;
+    border:1.5px solid rgba(47,107,255,.35);
+    opacity:0;
+    animation:ring-pulse 2.2s cubic-bezier(.2,.7,.3,1) infinite;
+  }
+  .splash-rings span:nth-child(2){ animation-delay:.55s; border-color:rgba(91,76,252,.3); }
+  .splash-rings span:nth-child(3){ animation-delay:1.1s; border-color:rgba(51,214,199,.28); }
+  @keyframes ring-pulse{
+    0%{ transform:scale(.35); opacity:0; }
+    18%{ opacity:.9; }
+    100%{ transform:scale(1.35); opacity:0; }
+  }
+
+  .splash-spark{
+    position:absolute;
+    width:5px; height:5px;
+    border-radius:50%;
+    background:#fff;
+    opacity:0;
+    box-shadow:0 0 6px 1px rgba(255,255,255,.8);
+    animation:spark-burst .9s ease-out forwards;
+  }
+  @keyframes spark-burst{
+    0%{ transform:translate(0,0) scale(1); opacity:0; }
+    15%{ opacity:1; }
+    100%{ transform:translate(var(--sx), var(--sy)) scale(.2); opacity:0; }
+  }
+
+  .splash-logo{
+    position:relative;
+    width:112px; height:112px;
+    border-radius:32px;
+    display:flex; align-items:center; justify-content:center;
+    background:linear-gradient(135deg,#3E7CFF,#5B4CFC);
+    box-shadow:0 16px 32px -14px rgba(47,107,255,.5), inset 0 1px 0 rgba(255,255,255,.4);
+    transform:scale(.3) rotate(-18deg);
+    opacity:0;
+    animation:logo-in .8s cubic-bezier(.2,1.5,.4,1) forwards .15s;
+  }
+  .splash-logo svg{
+    width:52px; height:52px;
+    transform-origin:center;
+    animation:sparkle-twinkle 1.8s ease-in-out infinite .95s;
+  }
+  @keyframes sparkle-twinkle{
+    0%, 100%{ transform:scale(1) rotate(0deg); }
+    50%{ transform:scale(1.12) rotate(8deg); }
+  }
+  @keyframes logo-in{
+    0%{ transform:scale(.3) rotate(-18deg); opacity:0; }
+    55%{ transform:scale(1.16) rotate(6deg); opacity:1; }
+    75%{ transform:scale(.94) rotate(-2deg); }
+    100%{ transform:scale(1) rotate(0deg); opacity:1; }
+  }
+
+  .splash-name{
+    margin-top:22px;
+    font-size:22px;
+    font-weight:800;
+    letter-spacing:-.01em;
+    opacity:0;
+    transform:translateY(8px);
+    animation:rise-in .5s ease forwards .55s;
+  }
+  .splash-tag{
+    margin-top:6px;
+    font-size:13.5px;
+    font-weight:600;
+    color:var(--ink-soft);
+    opacity:0;
+    transform:translateY(8px);
+    animation:rise-in .5s ease forwards .72s;
+  }
+  html.dark .splash-tag{ color:var(--ink-soft-dark); }
+
+  @media (prefers-reduced-motion: reduce){
+    .splash-logo, .splash-name, .splash-tag, .splash-rings span, .splash-spark, .splash-logo svg{ animation:none !important; opacity:1 !important; transform:none !important; }
+  }
+</style>
+</head>
+<body>
+
+<svg class="grain" width="0" height="0">
+  <filter id="noiseFilter">
+    <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch"/>
+    <feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.9 0"/>
+  </filter>
+</svg>
+<svg class="grain" preserveAspectRatio="none" width="100%" height="100%">
+  <rect width="100%" height="100%" filter="url(#noiseFilter)"/>
+</svg>
+
+<div class="splash" id="splash">
+  <div class="splash-rings" id="splashRings"><span></span><span></span><span></span></div>
+  <div class="splash-logo" id="splashLogo">
+    <svg viewBox="0 0 24 24" fill="#fff"><path d="M12 2.5c.6 3.4 1.4 5.6 2.8 7 1.4 1.4 3.6 2.2 7 2.8-3.4.6-5.6 1.4-7 2.8-1.4 1.4-2.2 3.6-2.8 7-.6-3.4-1.4-5.6-2.8-7-1.4-1.4-3.6-2.2-7-2.8 3.4-.6 5.6-1.4 7-2.8 1.4-1.4 2.2-3.6 2.8-7z"/></svg>
+  </div>
+  <div class="splash-name">VegaChat</div>
+  <div class="splash-tag" data-ru="Твой ИИ-собеседник" data-en="Your AI companion">Твой ИИ-собеседник</div>
+</div>
+
+<div class="app" id="app">
+  <div class="blob" id="blob"></div>
+  <div class="particles" id="particles"></div>
+
+  <div class="topbar">
+    <div class="pill-btn" id="langBtn" aria-label="Сменить язык">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 4 6 4 9s-1.5 6.4-4 9c-2.5-2.6-4-6-4-9s1.5-6.4 4-9z"/></svg>
+      <span id="langLabel">RU</span>
+    </div>
+    <div class="icon-btn" id="themeBtn" aria-label="Тёмная тема">
+      <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+      </svg>
+    </div>
+  </div>
+
+  <div class="viewport">
+    <div class="track" id="track">
+
+      <!-- Slide 1 -->
+      <div class="slide is-active" data-accent="blue">
+        <div class="icon-wrap" style="background:linear-gradient(135deg,#3E7CFF,#5B4CFC); --shadow-color:rgba(47,107,255,.55);">
+          <svg viewBox="0 0 24 24" fill="#fff"><path d="M12 2.5c.6 3.4 1.4 5.6 2.8 7 1.4 1.4 3.6 2.2 7 2.8-3.4.6-5.6 1.4-7 2.8-1.4 1.4-2.2 3.6-2.8 7-.6-3.4-1.4-5.6-2.8-7-1.4-1.4-3.6-2.2-7-2.8 3.4-.6 5.6-1.4 7-2.8 1.4-1.4 2.2-3.6 2.8-7z"/></svg>
+        </div>
+        <h1 data-ru="Добро пожаловать в VegaChat" data-en="Welcome to VegaChat">Добро пожаловать в VegaChat</h1>
+        <p class="sub" data-ru="Твой личный ИИ-собеседник. Отвечает на вопросы, помогает с делами и просто общается — как живой человек." data-en="Your personal AI companion. It answers questions, helps get things done, and just talks — like a real person.">Твой личный ИИ-собеседник. Отвечает на вопросы, помогает с делами и просто общается — как живой человек.</p>
+      </div>
+
+      <!-- Slide 2 -->
+      <div class="slide" data-accent="cyan">
+        <div class="icon-wrap" style="background:linear-gradient(135deg,#33D6C7,#2F6BFF); --shadow-color:rgba(51,214,199,.5);">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3.6-7.2"/><path d="M21 3v6h-6"/><circle cx="12" cy="12" r="2.2"/></svg>
+        </div>
+        <h1 data-ru="Спрашивай о чём угодно" data-en="Ask about anything">Спрашивай о чём угодно</h1>
+        <p class="sub" data-ru="VegaChat разбирается в любых темах и объясняет простым языком — без сложных терминов и воды." data-en="VegaChat understands any topic and explains it in plain language — no jargon, no fluff.">VegaChat разбирается в любых темах и объясняет простым языком — без сложных терминов и воды.</p>
+      </div>
+
+      <!-- Slide 3 -->
+      <div class="slide" data-accent="indigo">
+        <div class="icon-wrap" style="background:linear-gradient(135deg,#5B4CFC,#8A5CFC); --shadow-color:rgba(91,76,252,.5);">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>
+        </div>
+        <h1 data-ru="Разговаривай голосом" data-en="Talk out loud">Разговаривай голосом</h1>
+        <p class="sub" data-ru="Не хочешь печатать — просто говори. VegaChat слышит и отвечает в реальном времени." data-en="Don't feel like typing — just speak. VegaChat listens and replies in real time.">Не хочешь печатать — просто говори. VegaChat слышит и отвечает в реальном времени.</p>
+      </div>
+
+      <!-- Slide 4 -->
+      <div class="slide" data-accent="pink">
+        <div class="icon-wrap" style="background:linear-gradient(135deg,#FF6FA0,#FF9966); --shadow-color:rgba(255,111,160,.5);">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-4.5-9.5-9C.5 8 2.5 4 6.5 4c2 0 3.4 1.1 4 2.2C11.1 5.1 12.5 4 14.5 4c4 0 6 4 4 8-2.5 4.5-6.5 9-6.5 9z"/></svg>
+        </div>
+        <h1 data-ru="Помнит и подстраивается" data-en="Remembers and adapts">Помнит и подстраивается</h1>
+        <p class="sub" data-ru="VegaChat запоминает контекст разговора и твои предпочтения, чтобы с каждым разом общаться удобнее." data-en="VegaChat remembers the context of your conversation and your preferences, getting more helpful every time.">VegaChat запоминает контекст разговора и твои предпочтения, чтобы с каждым разом общаться удобнее.</p>
+      </div>
+
+      <!-- Slide 5 — contest -->
+      <div class="slide" data-accent="blue">
+        <div class="icon-wrap" style="background:linear-gradient(135deg,#2F6BFF,#33D6C7); --shadow-color:rgba(47,107,255,.5);">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.6 5.9L21 9l-4.6 4.3L17.5 20 12 16.8 6.5 20l1.1-6.7L3 9l6.4-1.1z"/></svg>
+        </div>
+        <h1 data-ru="Участвуй и выигрывай" data-en="Join in and win">Участвуй и выигрывай</h1>
+        <p class="sub" data-ru="Присоединяйся к розыгрышу для первых пользователей VegaChat." data-en="Join the giveaway for VegaChat's very first users.">Присоединяйся к розыгрышу для первых пользователей VegaChat.</p>
+
+        <div class="contest-card">
+          <a class="contest-link" href="https://t.me/randombeast_bot/devapp?startapp=invite_36JxLf0G3P&startApp=invite_36JxLf0G3P" target="_blank" rel="noopener" id="contestLink">
+            <svg viewBox="0 0 24 24" fill="#fff"><path d="M21.5 3.5 2.7 10.9c-1.2.5-1.2 1.2-.2 1.5l4.8 1.5 1.9 5.7c.2.6.4.9.9.9.4 0 .6-.2.9-.5l2.1-2 4.4 3.2c.8.4 1.4.2 1.6-.7l3-13.9c.3-1.1-.4-1.6-1.1-1.1zM8.3 13.6l9-5.6c.4-.3.8-.1.5.2l-7.3 6.6-.3 3.1-1.4-4.3z"/></svg>
+            <span data-ru="Участвовать в конкурсе" data-en="Enter the contest">Участвовать в конкурсе</span>
+          </a>
+          <p class="contest-note" data-ru="Откроется бот в Telegram" data-en="Opens the bot in Telegram">Откроется бот в Telegram</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="dots" id="dots">
+    <div class="dot active" data-i="0"></div>
+    <div class="dot" data-i="1"></div>
+    <div class="dot" data-i="2"></div>
+    <div class="dot" data-i="3"></div>
+    <div class="dot" data-i="4"></div>
+  </div>
+
+  <div class="bottom">
+    <button class="cta" id="ctaBtn" data-ru="Далее" data-en="Next">Далее</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  var total = 5;
+  var current = 0;
+  var lang = 'ru';
+  var track = document.getElementById('track');
+  var slides = document.querySelectorAll('.slide');
+  var dots = document.querySelectorAll('.dot');
+  var cta = document.getElementById('ctaBtn');
+  var blob = document.getElementById('blob');
+  var splash = document.getElementById('splash');
+  var splashLogo = document.getElementById('splashLogo');
+  var splashRings = document.getElementById('splashRings');
+  var langBtn = document.getElementById('langBtn');
+  var langLabel = document.getElementById('langLabel');
+  var themeBtn = document.getElementById('themeBtn');
+  var themeIcon = document.getElementById('themeIcon');
+  var particlesWrap = document.getElementById('particles');
+
+  var accentColors = {
+    blue:   'radial-gradient(circle at 50% 30%, #8fb3ff 0%, #dbe6ff 45%, rgba(255,255,255,0) 72%)',
+    cyan:   'radial-gradient(circle at 50% 30%, #8be9df 0%, #d8fbf6 45%, rgba(255,255,255,0) 72%)',
+    indigo: 'radial-gradient(circle at 50% 30%, #b6a8ff 0%, #e6ddff 45%, rgba(255,255,255,0) 72%)',
+    pink:   'radial-gradient(circle at 50% 30%, #ffb0cc 0%, #ffe1ec 45%, rgba(255,255,255,0) 72%)'
+  };
+  var accentColorsDark = {
+    blue:   'radial-gradient(circle at 50% 30%, #2F6BFF 0%, rgba(47,107,255,0) 70%)',
+    cyan:   'radial-gradient(circle at 50% 30%, #33D6C7 0%, rgba(51,214,199,0) 70%)',
+    indigo: 'radial-gradient(circle at 50% 30%, #5B4CFC 0%, rgba(91,76,252,0) 70%)',
+    pink:   'radial-gradient(circle at 50% 30%, #FF6FA0 0%, rgba(255,111,160,0) 70%)'
+  };
+  var particleFills = { blue:'#2F6BFF', cyan:'#33D6C7', indigo:'#5B4CFC', pink:'#FF6FA0' };
+
+  function isDark(){ return document.documentElement.classList.contains('dark'); }
+
+  function paintBlob(){
+    var accent = slides[current].getAttribute('data-accent');
+    blob.style.background = (isDark() ? accentColorsDark : accentColors)[accent];
+    spawnParticles(accent);
+  }
+
+  /* ---------------- ambient particles ---------------- */
+  function spawnParticles(accent){
+    particlesWrap.innerHTML = '';
+    var color = particleFills[accent] || particleFills.blue;
+    var count = 10;
+    for (var i = 0; i < count; i++){
+      var p = document.createElement('div');
+      p.className = 'particle';
+      var size = 2 + Math.random() * 3.5;
+      p.style.width = size + 'px';
+      p.style.height = size + 'px';
+      p.style.left = (8 + Math.random() * 84) + '%';
+      p.style.top = (30 + Math.random() * 45) + '%';
+      p.style.background = color;
+      p.style.animationDuration = (5 + Math.random() * 5) + 's';
+      p.style.animationDelay = (Math.random() * 5) + 's';
+      particlesWrap.appendChild(p);
+    }
+  }
+
+  /* ---------------- tap ripple, used on every pressable ---------------- */
+  function attachRipple(el){
+    el.addEventListener('pointerdown', function(e){
+      var rect = el.getBoundingClientRect();
+      var size = Math.max(rect.width, rect.height) * 1.4;
+      var r = document.createElement('span');
+      r.className = 'ripple';
+      r.style.width = r.style.height = size + 'px';
+      r.style.left = ((e.clientX ?? (rect.left + rect.width/2)) - rect.left - size/2) + 'px';
+      r.style.top = ((e.clientY ?? (rect.top + rect.height/2)) - rect.top - size/2) + 'px';
+      el.appendChild(r);
+      window.setTimeout(function(){ r.remove(); }, 600);
+    });
+  }
+  [langBtn, themeBtn, cta].forEach(attachRipple);
+
+  /* ---------------- synthesized UI sound engine ----------------
+     Small, original blips/pops in the spirit of a modern chat app's
+     UI sounds — generated with the Web Audio API, not sampled audio. */
+  var actx = null;
+  function ctx(){
+    if (!actx){
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) actx = new AC();
+    }
+    if (actx && actx.state === 'suspended') actx.resume();
+    return actx;
+  }
+  function tone(freq, start, dur, opts){
+    var a = ctx();
+    if (!a) return;
+    opts = opts || {};
+    var osc = a.createOscillator();
+    var gain = a.createGain();
+    osc.type = opts.type || 'sine';
+    osc.frequency.setValueAtTime(freq, a.currentTime + start);
+    if (opts.slideTo){
+      osc.frequency.exponentialRampToValueAtTime(opts.slideTo, a.currentTime + start + dur);
+    }
+    var peak = opts.gain || 0.12;
+    gain.gain.setValueAtTime(0.0001, a.currentTime + start);
+    gain.gain.exponentialRampToValueAtTime(peak, a.currentTime + start + Math.min(.012, dur*0.3));
+    gain.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + start + dur);
+    osc.connect(gain).connect(a.destination);
+    osc.start(a.currentTime + start);
+    osc.stop(a.currentTime + start + dur + 0.02);
+  }
+  function playClick(){ tone(1050, 0, .06, {type:'sine', gain:.10, slideTo:1300}); }
+  function playToggle(){ tone(620, 0, .05, {type:'sine', gain:.09}); tone(900, .04, .07, {type:'sine', gain:.08}); }
+  function playSwoosh(){
+    var a = ctx(); if (!a) return;
+    var bufSize = a.sampleRate * 0.18;
+    var buf = a.createBuffer(1, bufSize, a.sampleRate);
+    var data = buf.getChannelData(0);
+    for (var i = 0; i < bufSize; i++){ data[i] = (Math.random()*2-1) * (1 - i/bufSize); }
+    var src = a.createBufferSource(); src.buffer = buf;
+    var filt = a.createBiquadFilter(); filt.type = 'bandpass';
+    filt.frequency.setValueAtTime(700, a.currentTime);
+    filt.frequency.exponentialRampToValueAtTime(2200, a.currentTime + .16);
+    var gain = a.createGain();
+    gain.gain.setValueAtTime(0.0001, a.currentTime);
+    gain.gain.exponentialRampToValueAtTime(.11, a.currentTime + .02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + .18);
+    src.connect(filt).connect(gain).connect(a.destination);
+    src.start();
+  }
+  function playChime(){
+    tone(660, 0, .16, {type:'sine', gain:.11});
+    tone(880, .07, .22, {type:'sine', gain:.11});
+    tone(1320, .14, .26, {type:'sine', gain:.09});
+  }
+
+  function render(prevDir){
+    track.style.transform = 'translateX(-' + (current * (100/total)) + '%)';
+    slides.forEach(function(s, i){ s.classList.toggle('is-active', i === current); });
+    dots.forEach(function(d, i){ d.classList.toggle('active', i === current); });
+    cta.textContent = (current === total - 1)
+      ? (lang === 'ru' ? 'Начать чат' : 'Start chatting')
+      : cta.getAttribute('data-' + lang);
+    paintBlob();
+  }
+
+  function goTo(i){
+    current = Math.max(0, Math.min(total - 1, i));
+    render();
+  }
+
+  // Open external links (like the Telegram bot). In a Trusted Web Activity
+  // (Capacitor build). Capacitor's Browser plugin opens the URL through
+  // Chrome Custom Tabs (Android) — a real OS-level browser component, not
+  // the app's embedded WebView — so it correctly hands off "tg://" deep
+  // links to the Telegram app if installed. window.Capacitor.Plugins is
+  // injected automatically by capacitor.js (see the <script> tag in
+  // <head>), no bundler/import needed.
+  var contestLink = document.getElementById('contestLink');
+  if (contestLink){
+    contestLink.addEventListener('click', function(e){
+      playClick();
+      if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Browser){
+        e.preventDefault();
+        window.Capacitor.Plugins.Browser.open({ url: contestLink.href });
+      }
+      // else: not running inside the Capacitor app (e.g. plain browser
+      // preview) — let the link navigate natively, no preventDefault.
+    });
+  }
+
+  cta.addEventListener('click', function(){
+    cta.classList.remove('pulse'); void cta.offsetWidth; cta.classList.add('pulse');
+    if (current === total - 1){
+      playChime();
+      finishOnboarding();
+    } else {
+      playSwoosh();
+      goTo(current + 1);
+    }
+  });
+
+  function finishOnboarding(){
+    try { localStorage.setItem('vegachat_onboarded', '1'); } catch(e){}
+    // Hook for native shell (Cordova/Capacitor) to route to the main app screen.
+    if (window.onOnboardingComplete) { window.onOnboardingComplete(); }
+    document.dispatchEvent(new CustomEvent('vegachat:onboarding-complete'));
+  }
+
+  // Navigation is intentionally button-only: no swipe, no skip, no dot tapping.
+
+  // Language toggle
+  langBtn.addEventListener('click', function(){
+    playClick();
+    lang = (lang === 'ru') ? 'en' : 'ru';
+    langLabel.textContent = lang.toUpperCase();
+    document.querySelectorAll('[data-ru]').forEach(function(el){
+      el.textContent = el.getAttribute('data-' + lang);
+    });
+    render();
+  });
+
+  // Theme toggle
+  themeBtn.addEventListener('click', function(){
+    playToggle();
+    document.documentElement.classList.toggle('dark');
+    themeIcon.innerHTML = isDark()
+      ? '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'
+      : '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
+    paintBlob();
+  });
+
+  render();
+
+  // Register the service worker (required for PWABuilder to consider the
+  // site an installable PWA and package it as an Android app).
+  if ('serviceWorker' in navigator){
+    window.addEventListener('load', function(){
+      navigator.serviceWorker.register('sw.js').catch(function(err){
+        console.warn('SW registration failed', err);
+      });
+    });
+  }
+
+  /* ---------------- splash sparkle burst ---------------- */
+  function burstSparks(){
+    var count = 10;
+    for (var i = 0; i < count; i++){
+      var s = document.createElement('div');
+      s.className = 'splash-spark';
+      var angle = (Math.PI * 2 * i) / count + Math.random() * 0.3;
+      var dist = 60 + Math.random() * 50;
+      s.style.setProperty('--sx', (Math.cos(angle) * dist) + 'px');
+      s.style.setProperty('--sy', (Math.sin(angle) * dist) + 'px');
+      s.style.left = '50%';
+      s.style.top = '50%';
+      s.style.animationDelay = (0.55 + Math.random() * 0.15) + 's';
+      splashRings.appendChild(s);
+    }
+  }
+  burstSparks();
+
+  // A soft two-note pop to accompany the logo landing (plays once a gesture
+  // has unlocked audio; harmless no-op before that).
+  window.setTimeout(function(){ try { tone(760, 0, .09, {type:'sine', gain:.07}); tone(1140, .07, .12, {type:'sine', gain:.06}); } catch(e){} }, 150);
+
+  // Play the logo intro, then reveal the onboarding flow.
+  window.setTimeout(function(){
+    splash.classList.add('hide');
+  }, 2050);
+})();
+</script>
+</body>
+</html>
